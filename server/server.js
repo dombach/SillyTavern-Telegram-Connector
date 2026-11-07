@@ -106,9 +106,15 @@ const wssPort = config.wssPort;
 
 // 检查是否修改了默认token
 if (token === 'TOKEN' || token === 'YOUR_TELEGRAM_BOT_TOKEN_HERE') {
-    logWithTimestamp('error', '错误: 请先在config.js文件中设置你的Telegram Bot Token！');
-    logWithTimestamp('error', '找到 telegramToken: \'YOUR_TELEGRAM_BOT_TOKEN_HERE\' 这一行并替换为你从BotFather获取的token');
-    process.exit(1); // 终止程序
+    logWithTimestamp('error', 'Error: Please set your Telegram Bot Token in config.js first!');
+    logWithTimestamp('error', 'Find the line telegramToken: \'YOUR_TELEGRAM_BOT_TOKEN_HERE\' and replace it with the token you got from BotFather');
+    process.exit(1); // Terminate program
+}
+
+// Security warning: an empty whitelist allows everyone to control the bot.
+if (!config.allowedUserIds || config.allowedUserIds.length === 0) {
+    logWithTimestamp('warn', 'SECURITY WARNING: allowedUserIds is empty. EVERYONE can use this bot and control SillyTavern!');
+    logWithTimestamp('warn', 'Set your Telegram user ID in config.js (get it from @userinfobot) to restrict access.');
 }
 
 // 初始化Telegram Bot，但不立即启动轮询
