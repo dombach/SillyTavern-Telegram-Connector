@@ -21,7 +21,7 @@ import {
     openCharacterChat,
     Generate,
     setExternalAbortController,
-} from "../../../../script.js";
+} from "../../../script.js";
 
 const MODULE_NAME = 'SillyTavern-Telegram-Connector';
 const DEFAULT_SETTINGS = {
@@ -200,9 +200,7 @@ function connect() {
                         case 'listchars': {
                             const characters = context.characters.slice(1);
                             if (characters.length > 0) {
-                                replyText = 'Available characters list:
-
-';
+                                replyText = 'Available characters list:\n\n';
                                 characters.forEach((char, index) => {
                                     replyText += `${index + 1}. /switchchar_${index + 1} - ${char.name}\n`;
                                 });
@@ -239,9 +237,7 @@ function connect() {
                             }
                             const chatFiles = await getPastCharacterChats(context.characterId);
                             if (chatFiles.length > 0) {
-                                replyText = 'Chat records for the current character:
-
-';
+                                replyText = 'Chat records for the current character:\n\n';
                                 chatFiles.forEach((chat, index) => {
                                     const chatName = chat.file_name.replace('.jsonl', '');
                                     replyText += `${index + 1}. /switchchat_${index + 1} - ${chatName}\n`;
