@@ -4,11 +4,11 @@ const WebSocket = require('ws');
 const fs = require('fs');
 const path = require('path');
 
-// 添加日志记录函数，带有时间戳
+// Add a logging function with a timestamp
 function logWithTimestamp(level, ...args) {
     const now = new Date();
 
-    // 使用本地时区格式化时间
+    // Format the time using the local timezone
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
@@ -31,80 +31,80 @@ function logWithTimestamp(level, ...args) {
     }
 }
 
-// 重启保护 - 防止循环重启
+// Restart protection - prevents a restart loop
 const RESTART_PROTECTION_FILE = path.join(__dirname, '.restart_protection');
 const MAX_RESTARTS = 3;
-const RESTART_WINDOW_MS = 60000; // 1分钟
+const RESTART_WINDOW_MS = 60000; // 1 minute
 
-// 检查是否可能处于循环重启状态
+// Check whether a restart loop is possible
 function checkRestartProtection() {
     try {
         if (fs.existsSync(RESTART_PROTECTION_FILE)) {
             const data = JSON.parse(fs.readFileSync(RESTART_PROTECTION_FILE, 'utf8'));
             const now = Date.now();
 
-            // 清理过期的重启记录
+            // Clean up expired restart records
             data.restarts = data.restarts.filter(time => now - time < RESTART_WINDOW_MS);
 
-            // 添加当前重启时间
+            // Add the current restart time
             data.restarts.push(now);
 
-            // 如果在时间窗口内重启次数过多，则退出
+            // If there were too many restarts within the window, exit
             if (data.restarts.length > MAX_RESTARTS) {
-                logWithTimestamp('error', `检测到可能的循环重启！在${RESTART_WINDOW_MS / 1000}秒内重启了${data.restarts.length}次。`);
-                logWithTimestamp('error', '为防止资源耗尽，服务器将退出。请手动检查并修复问题后再启动。');
+                logWithTimestamp('error', `Possible loop restart detected! Restarted ${data.restarts.length} time(s) within ${RESTART_WINDOW_MS / 1000} second(s).`);
+                logWithTimestamp('error', 'To prevent resource exhaustion, the server will exit. Please check and fix the issue manually before restarting.');
 
-                // 如果有通知chatId，尝试发送错误消息
+                // If a notify chatId is set, try to send the error message
                 if (process.env.RESTART_NOTIFY_CHATID) {
                     const chatId = parseInt(process.env.RESTART_NOTIFY_CHATID);
                     if (!isNaN(chatId)) {
-                        // 创建临时bot发送错误消息
+                        // Create a temporary bot to send the error message
                         try {
-                            const tempBot = new TelegramBot(require('./config').telegramToken, { polling: false });
-                            tempBot.sendMessage(chatId, '检测到循环重启！服务器已停止以防止资源耗尽。请手动检查问题。')
+                            const tempBot = new TelegramBot.Bot(require('./config').telegramToken, { polling: false });
+                            tempBot.api.sendMessage({ chat_id: chatId, text: 'Loop restart detected! The server has stopped to prevent resource exhaustion. Please check and fix the issue manually.' })
                                 .finally(() => process.exit(1));
                         } catch (e) {
                             process.exit(1);
                         }
-                        return; // 等待消息发送后退出
+                        return; // Wait for the message to be sent, then exit
                     }
                 }
 
                 process.exit(1);
             }
 
-            // 保存更新后的重启记录
+            // Save the updated restart records
             fs.writeFileSync(RESTART_PROTECTION_FILE, JSON.stringify(data));
         } else {
-            // 创建新的重启保护文件
+            // Create a new restart protection file
             fs.writeFileSync(RESTART_PROTECTION_FILE, JSON.stringify({ restarts: [Date.now()] }));
         }
     } catch (error) {
-        logWithTimestamp('error', '重启保护检查失败:', error);
-        // 出错时继续执行，不要阻止服务器启动
+        logWithTimestamp('error', 'Restart protection check failed:', error);
+        // Continue on error; do not block the server from starting
     }
 }
 
-// 启动时检查重启保护
+// Check restart protection on startup
 checkRestartProtection();
 
-// 检查配置文件是否存在
+// Check whether the config file exists
 const configPath = path.join(__dirname, './config.js');
 if (!fs.existsSync(configPath)) {
-    logWithTimestamp('error', '错误: 找不到配置文件 config.js！');
-    logWithTimestamp('error', '请在server目录下复制 config.example.js 为 config.js，并设置您的Telegram Bot Token');
-    process.exit(1); // 终止程序
+    logWithTimestamp('error', 'Error: config.js not found!');
+    logWithTimestamp('error', 'Copy config.example.js to config.js in the server directory and set your Telegram Bot Token');
+    process.exit(1); // Terminate program
 }
 
 const config = require('./config');
 
-// --- 配置 ---
-// 从配置文件中获取Telegram Bot Token和WebSocket端口
+// --- Config ---
+// Read the Telegram Bot Token and WebSocket port from the config
 const token = config.telegramToken;
-// WebSocket服务器端口
+// WebSocket server port
 const wssPort = config.wssPort;
 
-// 检查是否修改了默认token
+// Check whether the default token was changed
 if (token === 'TOKEN' || token === 'YOUR_TELEGRAM_BOT_TOKEN_HERE') {
     logWithTimestamp('error', 'Error: Please set your Telegram Bot Token in config.js first!');
     logWithTimestamp('error', 'Find the line telegramToken: \'YOUR_TELEGRAM_BOT_TOKEN_HERE\' and replace it with the token you got from BotFather');
@@ -117,26 +117,26 @@ if (!config.allowedUserIds || config.allowedUserIds.length === 0) {
     logWithTimestamp('warn', 'Set your Telegram user ID in config.js (get it from @userinfobot) to restrict access.');
 }
 
-// 初始化Telegram Bot，但不立即启动轮询
-const bot = new TelegramBot(token, { polling: false });
-logWithTimestamp('log', '正在初始化Telegram Bot...');
+// Initialize Telegram Bot, but do not start polling immediately
+const bot = new TelegramBot.Bot(token, { polling: false });
+logWithTimestamp('log', 'Initializing Telegram Bot...');
 
-// 手动清除所有未处理的消息，然后启动轮询
+// Manually clear all unprocessed messages, then start polling
 (async function clearAndStartPolling() {
     try {
-        logWithTimestamp('log', '正在清除Telegram消息队列...');
+        logWithTimestamp('log', 'Clearing the Telegram message queue...');
 
-        // 检查是否是重启，如果是则使用更彻底的清除方式
+        // Check whether this is a restart; if so use a more thorough clearing approach
         const isRestart = process.env.TELEGRAM_CLEAR_UPDATES === '1';
         if (isRestart) {
-            logWithTimestamp('log', '检测到重启标记，将执行更彻底的消息队列清理...');
-            // 获取更新并丢弃所有消息
+            logWithTimestamp('log', 'Restart flag detected; performing a more thorough message-queue cleanup...');
+            // Fetch updates and discard all messages
             let updates;
             let lastUpdateId = 0;
 
-            // 循环获取所有更新直到没有更多更新
+            // Loop over fetching updates until there are no more updates
             do {
-                updates = await bot.getUpdates({
+                updates = await bot.api.getUpdates({
                     offset: lastUpdateId,
                     limit: 100,
                     timeout: 0
@@ -144,53 +144,54 @@ logWithTimestamp('log', '正在初始化Telegram Bot...');
 
                 if (updates && updates.length > 0) {
                     lastUpdateId = updates[updates.length - 1].update_id + 1;
-                    logWithTimestamp('log', `清理了 ${updates.length} 条消息，当前offset: ${lastUpdateId}`);
+                    logWithTimestamp('log', `Cleared ${updates.length} message(s), current offset: ${lastUpdateId}`);
                 }
             } while (updates && updates.length > 0);
 
-            // 清除环境变量
+            // Clear the environment variable
             delete process.env.TELEGRAM_CLEAR_UPDATES;
-            logWithTimestamp('log', '消息队列清理完成');
+            logWithTimestamp('log', 'Message queue cleanup complete');
         } else {
-            // 普通启动时的清理
-            const updates = await bot.getUpdates({ limit: 100, timeout: 0 });
+            // Cleanup on a normal startup
+            const updates = await bot.api.getUpdates({ limit: 100, timeout: 0 });
             if (updates && updates.length > 0) {
-                // 如果有更新，获取最后一个更新的ID并设置offset为它+1
+                // If there are updates, get the last update's ID and set the offset to it + 1
                 const lastUpdateId = updates[updates.length - 1].update_id;
-                await bot.getUpdates({ offset: lastUpdateId + 1, limit: 1, timeout: 0 });
-                logWithTimestamp('log', `已清除 ${updates.length} 条待处理消息`);
+                await bot.api.getUpdates({ offset: lastUpdateId + 1, limit: 1, timeout: 0 });
+                logWithTimestamp('log', `Cleared ${updates.length} pending message(s)`);
             } else {
-                logWithTimestamp('log', '没有待处理消息需要清除');
+                logWithTimestamp('log', 'No pending messages to clear');
             }
         }
 
-        // 启动轮询
-        bot.startPolling({
-            restart: true,
-            clean: true
+        // Start polling
+        bot.startPolling().catch(err => {
+            logWithTimestamp('error', 'Failed to start Telegram Bot polling:', err.message);
         });
-        logWithTimestamp('log', 'Telegram Bot轮询已启动');
+        logWithTimestamp('log', 'Telegram Bot polling started');
     } catch (error) {
-        logWithTimestamp('error', '清除消息队列或启动轮询时出错:', error);
-        // 如果清除失败，仍然尝试启动轮询
-        bot.startPolling({ restart: true, clean: true });
-        logWithTimestamp('log', 'Telegram Bot轮询已启动（清除队列失败后）');
+        logWithTimestamp('error', 'Error clearing the message queue or starting polling:', error);
+        // If clearing fails, still try to start polling
+        bot.startPolling().catch(err => {
+            logWithTimestamp('error', 'Failed to start Telegram Bot polling (fallback):', err.message);
+        });
+        logWithTimestamp('log', 'Telegram Bot polling started (after queue cleanup failed)');
     }
 })();
 
-// 初始化WebSocket服务器
+// Initialize WebSocket server
 const wss = new WebSocket.Server({ port: wssPort });
-logWithTimestamp('log', `WebSocket服务器正在监听端口 ${wssPort}...`);
+logWithTimestamp('log', `WebSocket server listening on port ${wssPort}...`);
 
-let sillyTavernClient = null; // 用于存储连接的SillyTavern扩展客户端
+let sillyTavernClient = null; // Holds the connected SillyTavern extension client
 
-// 用于存储正在进行的流式会话，调整会话结构，使用Promise来处理messageId
-// 结构: { messagePromise: Promise<number> | null, lastText: String, timer: NodeJS.Timeout | null, isEditing: boolean }
+// Holds ongoing streaming sessions; adjust the session structure and use a Promise to handle messageId
+// Structure: { messagePromise: Promise<number> | null, lastText: String, timer: NodeJS.Timeout | null, isEditing: boolean }
 const ongoingStreams = new Map();
 
-// 重载服务器函数
+// Reload server function
 function reloadServer(chatId) {
-    logWithTimestamp('log', '重载服务器端组件...');
+    logWithTimestamp('log', 'Reloading server-side components...');
     Object.keys(require.cache).forEach(function (key) {
         if (key.indexOf('node_modules') === -1) {
             delete require.cache[key];
@@ -200,36 +201,36 @@ function reloadServer(chatId) {
         delete require.cache[require.resolve('./config.js')];
         const newConfig = require('./config.js');
         Object.assign(config, newConfig);
-        logWithTimestamp('log', '配置文件已重新加载');
+        logWithTimestamp('log', 'Config file reloaded');
     } catch (error) {
-        logWithTimestamp('error', '重新加载配置文件时出错:', error);
-        if (chatId) bot.sendMessage(chatId, '重新加载配置文件时出错: ' + error.message);
+        logWithTimestamp('error', 'Error reloading config file:', error);
+        if (chatId) bot.api.sendMessage({ chat_id: chatId, text: 'Error reloading config file: ' + error.message });
         return;
     }
-    logWithTimestamp('log', '服务器端组件已重载');
-    if (chatId) bot.sendMessage(chatId, '服务器端组件已成功重载。');
+    logWithTimestamp('log', 'Server-side components reloaded');
+    if (chatId) bot.api.sendMessage({ chat_id: chatId, text: 'Server-side components reloaded successfully.' });
 }
 
-// 重启服务器函数
+// Restart server function
 function restartServer(chatId) {
-    logWithTimestamp('log', '重启服务器端组件...');
+    logWithTimestamp('log', 'Restarting server-side components...');
 
-    // 首先停止Telegram Bot轮询
-    bot.stopPolling().then(() => {
-        logWithTimestamp('log', 'Telegram Bot轮询已停止');
+    // First, stop Telegram Bot polling
+    bot.close().then(() => {
+        logWithTimestamp('log', 'Telegram Bot polling stopped');
 
-        // 然后关闭WebSocket服务器
+        // Then close the WebSocket server
         if (wss) {
             wss.close(() => {
-                logWithTimestamp('log', 'WebSocket服务器已关闭，准备重启...');
+                logWithTimestamp('log', 'WebSocket server closed, preparing to restart...');
                 setTimeout(() => {
                     const { spawn } = require('child_process');
                     const serverPath = path.join(__dirname, 'server.js');
-                    logWithTimestamp('log', `重启服务器: ${serverPath}`);
+                    logWithTimestamp('log', `Restarting server: ${serverPath}`);
                     const cleanEnv = {
                         PATH: process.env.PATH,
                         NODE_PATH: process.env.NODE_PATH,
-                        TELEGRAM_CLEAR_UPDATES: '1' // 添加标记，表示这是一次重启
+                        TELEGRAM_CLEAR_UPDATES: '1' // Add a flag indicating this is a restart
                     };
                     if (chatId) cleanEnv.RESTART_NOTIFY_CHATID = chatId.toString();
                     const child = spawn(process.execPath, [serverPath], { detached: true, stdio: 'inherit', env: cleanEnv });
@@ -238,15 +239,15 @@ function restartServer(chatId) {
                 }, 1000);
             });
         } else {
-            // 如果没有WebSocket服务器，直接重启
+            // If there is no WebSocket server, restart directly
             setTimeout(() => {
                 const { spawn } = require('child_process');
                 const serverPath = path.join(__dirname, 'server.js');
-                logWithTimestamp('log', `重启服务器: ${serverPath}`);
+                logWithTimestamp('log', `Restarting server: ${serverPath}`);
                 const cleanEnv = {
                     PATH: process.env.PATH,
                     NODE_PATH: process.env.NODE_PATH,
-                    TELEGRAM_CLEAR_UPDATES: '1' // 添加标记，表示这是一次重启
+                    TELEGRAM_CLEAR_UPDATES: '1' // Add a flag indicating this is a restart
                 };
                 if (chatId) cleanEnv.RESTART_NOTIFY_CHATID = chatId.toString();
                 const child = spawn(process.execPath, [serverPath], { detached: true, stdio: 'inherit', env: cleanEnv });
@@ -255,19 +256,19 @@ function restartServer(chatId) {
             }, 1000);
         }
     }).catch(err => {
-        logWithTimestamp('error', '停止Telegram Bot轮询时出错:', err);
-        // 即使出错也继续重启过程
+        logWithTimestamp('error', 'Error stopping Telegram Bot polling:', err);
+        // Continue the restart process even on error
         if (wss) {
             wss.close(() => {
-                // 重启代码...
+                // Restart code...
                 setTimeout(() => {
                     const { spawn } = require('child_process');
                     const serverPath = path.join(__dirname, 'server.js');
-                    logWithTimestamp('log', `重启服务器: ${serverPath}`);
+                    logWithTimestamp('log', `Restarting server: ${serverPath}`);
                     const cleanEnv = {
                         PATH: process.env.PATH,
                         NODE_PATH: process.env.NODE_PATH,
-                        TELEGRAM_CLEAR_UPDATES: '1' // 添加标记，表示这是一次重启
+                        TELEGRAM_CLEAR_UPDATES: '1' // Add a flag indicating this is a restart
                     };
                     if (chatId) cleanEnv.RESTART_NOTIFY_CHATID = chatId.toString();
                     const child = spawn(process.execPath, [serverPath], { detached: true, stdio: 'inherit', env: cleanEnv });
@@ -276,15 +277,15 @@ function restartServer(chatId) {
                 }, 1000);
             });
         } else {
-            // 如果没有WebSocket服务器，直接重启
+            // If there is no WebSocket server, restart directly
             setTimeout(() => {
                 const { spawn } = require('child_process');
                 const serverPath = path.join(__dirname, 'server.js');
-                logWithTimestamp('log', `重启服务器: ${serverPath}`);
+                logWithTimestamp('log', `Restarting server: ${serverPath}`);
                 const cleanEnv = {
                     PATH: process.env.PATH,
                     NODE_PATH: process.env.NODE_PATH,
-                    TELEGRAM_CLEAR_UPDATES: '1' // 添加标记，表示这是一次重启
+                    TELEGRAM_CLEAR_UPDATES: '1' // Add a flag indicating this is a restart
                 };
                 if (chatId) cleanEnv.RESTART_NOTIFY_CHATID = chatId.toString();
                 const child = spawn(process.execPath, [serverPath], { detached: true, stdio: 'inherit', env: cleanEnv });
@@ -295,156 +296,158 @@ function restartServer(chatId) {
     });
 }
 
-// 退出服务器函数
+// Exit server function
 function exitServer() {
-    logWithTimestamp('log', '正在关闭服务器...');
+    logWithTimestamp('log', 'Shutting down the server...');
     const forceExitTimeout = setTimeout(() => {
-        logWithTimestamp('error', '退出操作超时，强制退出进程');
+        logWithTimestamp('error', 'Exit timed out; forcing process exit');
         process.exit(1);
     }, 10000);
     try {
         if (fs.existsSync(RESTART_PROTECTION_FILE)) {
             fs.unlinkSync(RESTART_PROTECTION_FILE);
-            logWithTimestamp('log', '已清理重启保护文件');
+            logWithTimestamp('log', 'Restart protection file cleaned up');
         }
     } catch (error) {
-        logWithTimestamp('error', '清理重启保护文件失败:', error);
+        logWithTimestamp('error', 'Failed to clean up the restart protection file:', error);
     }
     const finalExit = () => {
         clearTimeout(forceExitTimeout);
-        logWithTimestamp('log', '服务器端组件已成功关闭');
+        logWithTimestamp('log', 'Server-side components shut down successfully');
         process.exit(0);
     };
     if (wss) {
         wss.close(() => {
-            logWithTimestamp('log', 'WebSocket服务器已关闭');
-            bot.stopPolling().finally(finalExit);
+            logWithTimestamp('log', 'WebSocket server closed');
+            bot.close().finally(finalExit);
         });
     } else {
-        bot.stopPolling().finally(finalExit);
+        bot.close().finally(finalExit);
     }
 }
 
 function handleSystemCommand(command, chatId) {
-    logWithTimestamp('log', `执行系统命令: ${command}`);
+    logWithTimestamp('log', `Executing system command: ${command}`);
 
-    // 处理 ping 命令 - 返回连接状态信息
+    // Handle the ping command - return the connection status info
     if (command === 'ping') {
-        const bridgeStatus = 'Bridge状态：已连接 ✅';
+        const bridgeStatus = 'Bridge status: connected ✅';
         const stStatus = sillyTavernClient && sillyTavernClient.readyState === WebSocket.OPEN ?
-            'SillyTavern状态：已连接 ✅' :
-            'SillyTavern状态：未连接 ❌';
-        bot.sendMessage(chatId, `${bridgeStatus}\n${stStatus}`);
+            'SillyTavern status: connected ✅' :
+            'SillyTavern status: not connected ❌';
+        bot.api.sendMessage({ chat_id: chatId, text: `${bridgeStatus}\n${stStatus}` });
         return;
     }
 
     let responseMessage = '';
     switch (command) {
         case 'reload':
-            responseMessage = '正在重载服务器端组件...';
-            // 如果SillyTavern已连接，则执行刷新UI
+            responseMessage = 'Reloading server-side components...';
+            // If SillyTavern is connected, run the UI refresh
             if (sillyTavernClient && sillyTavernClient.readyState === WebSocket.OPEN) {
                 sillyTavernClient.commandToExecuteOnClose = { command, chatId };
                 sillyTavernClient.send(JSON.stringify({ type: 'system_command', command: 'reload_ui_only', chatId }));
             } else {
-                // 如果未连接，直接重载服务器
-                bot.sendMessage(chatId, responseMessage);
+                // If not connected, reload the server directly
+                bot.api.sendMessage({ chat_id: chatId, text: responseMessage });
                 reloadServer(chatId);
             }
             break;
         case 'restart':
-            responseMessage = '正在重启服务器端组件...';
-            // 如果SillyTavern已连接，则执行刷新UI
+            responseMessage = 'Restarting server-side components...';
+            // If SillyTavern is connected, run the UI refresh
             if (sillyTavernClient && sillyTavernClient.readyState === WebSocket.OPEN) {
                 sillyTavernClient.commandToExecuteOnClose = { command, chatId };
                 sillyTavernClient.send(JSON.stringify({ type: 'system_command', command: 'reload_ui_only', chatId }));
             } else {
-                // 如果未连接，直接重启服务器
-                bot.sendMessage(chatId, responseMessage);
+                // If not connected, restart the server directly
+                bot.api.sendMessage({ chat_id: chatId, text: responseMessage });
                 restartServer(chatId);
             }
             break;
         case 'exit':
-            responseMessage = '正在关闭服务器端组件...';
-            // 如果SillyTavern已连接，则执行刷新UI
+            responseMessage = 'Shutting down server-side components...';
+            // If SillyTavern is connected, run the UI refresh
             if (sillyTavernClient && sillyTavernClient.readyState === WebSocket.OPEN) {
                 sillyTavernClient.commandToExecuteOnClose = { command, chatId };
                 sillyTavernClient.send(JSON.stringify({ type: 'system_command', command: 'reload_ui_only', chatId }));
             } else {
-                // 如果未连接，直接退出服务器
-                bot.sendMessage(chatId, responseMessage);
+                // If not connected, exit the server directly
+                bot.api.sendMessage({ chat_id: chatId, text: responseMessage });
                 exitServer();
             }
             break;
         default:
-            logWithTimestamp('warn', `未知的系统命令: ${command}`);
-            bot.sendMessage(chatId, `未知的系统命令: /${command}`);
+            logWithTimestamp('warn', `Unknown system command: ${command}`);
+            bot.api.sendMessage({ chat_id: chatId, text: `Unknown system command: /${command}` });
             return;
     }
 
-    // 只有在SillyTavern已连接的情况下，消息才会在上面的switch语句中发送
-    // 所以这里只在SillyTavern已连接时发送响应消息
+    // Only when SillyTavern is connected is the message sent in the switch statement above
+    // So here the response message is only sent when SillyTavern is connected
     if (sillyTavernClient && sillyTavernClient.readyState === WebSocket.OPEN) {
-        bot.sendMessage(chatId, responseMessage);
+        bot.api.sendMessage({ chat_id: chatId, text: responseMessage });
     }
 }
 
-// 处理Telegram命令
+// Handle Telegram command
 async function handleTelegramCommand(command, args, chatId) {
-    logWithTimestamp('log', `处理Telegram命令: /${command} ${args.join(' ')}`);
+    logWithTimestamp('log', `Handling Telegram command: /${command} ${args.join(' ')}`);
 
-    // 显示"输入中"状态
-    bot.sendChatAction(chatId, 'typing').catch(error =>
-        logWithTimestamp('error', '发送"输入中"状态失败:', error));
+    // Show the 'typing' status
+    bot.api.sendChatAction({ chat_id: chatId, action: 'typing' }).catch(error =>
+        logWithTimestamp('error', 'Failed to send "typing" status:', error));
 
-    // 默认回复
-    let replyText = `未知命令: /${command}。 使用 /help 查看所有命令。`;
+    // Default reply
+    let replyText = `Unknown command: /${command}. Use /help to see all commands.`;
 
-    // 特殊处理help命令，无论SillyTavern是否连接都可以显示
+    // Special handling of the help command, shown regardless of whether SillyTavern is connected
     if (command === 'help') {
-        replyText = `SillyTavern Telegram Bridge 命令：\n\n`;
-        replyText += `聊天管理\n`;
-        replyText += `/new - 开始与当前角色的新聊天。\n`;
-        replyText += `/listchats - 列出当前角色的所有已保存的聊天记录。\n`;
-        replyText += `/switchchat <chat_name> - 加载特定的聊天记录。\n`;
-        replyText += `/switchchat_<序号> - 通过序号加载聊天记录。\n\n`;
-        replyText += `角色管理\n`;
-        replyText += `/listchars - 列出所有可用角色。\n`;
-        replyText += `/switchchar <char_name> - 切换到指定角色。\n`;
-        replyText += `/switchchar_<序号> - 通过序号切换角色。\n\n`;
-        replyText += `系统管理\n`;
-        replyText += `/reload - 重载插件的服务器端组件并刷新ST网页。\n`;
-        replyText += `/restart - 刷新ST网页并重启插件的服务器端组件。\n`;
-        replyText += `/exit - 退出插件的服务器端组件。\n`;
-        replyText += `/ping - 检查连接状态。\n\n`;
-        replyText += `帮助\n`;
-        replyText += `/help - 显示此帮助信息。`;
+        replyText = `SillyTavern Telegram Bridge commands:
 
-        // 发送帮助信息并返回
-        bot.sendMessage(chatId, replyText).catch(err => {
-            logWithTimestamp('error', `发送命令回复失败: ${err.message}`);
+\n\n`;
+        replyText += `Chat management\n`;
+        replyText += `/new - Start a new chat with the current character.\n`;
+        replyText += `/listchats - List all saved chat records for the current character.\n`;
+        replyText += `/switchchat <chat_name> - Load a specific chat record.\n`;
+        replyText += `/switchchat_<number> - Load a chat record by its number.\n\n`;
+        replyText += `Character management\n`;
+        replyText += `/listchars - List all available characters.\n`;
+        replyText += `/switchchar <char_name> - Switch to a specific character.\n`;
+        replyText += `/switchchar_<number> - Switch character by its number.\n\n`;
+        replyText += `System management\n`;
+        replyText += `/reload - Reload the plugin's server-side components and refresh the ST web page.\n`;
+        replyText += `/restart - Refresh the ST web page and restart the plugin's server-side components.\n`;
+        replyText += `/exit - Exit the plugin's server-side components.\n`;
+        replyText += `/ping - Check the connection status.\n\n`;
+        replyText += `Help\n`;
+        replyText += `/help - Show this help message.`;
+
+        // Send the help message and return
+        bot.api.sendMessage({ chat_id: chatId, text: replyText }).catch(err => {
+            logWithTimestamp('error', `Failed to send command reply: ${err.message}`);
         });
         return;
     }
 
-    // 检查SillyTavern是否连接
+    // Check whether SillyTavern is connected
     if (!sillyTavernClient || sillyTavernClient.readyState !== WebSocket.OPEN) {
-        bot.sendMessage(chatId, 'SillyTavern未连接，无法执行角色和聊天相关命令。请先确保SillyTavern已打开并启用了Telegram扩展。');
+        bot.api.sendMessage({ chat_id: chatId, text: 'SillyTavern is not connected and cannot run character/chat commands. Please make sure SillyTavern is open and the Telegram extension is enabled.' });
         return;
     }
 
-    // 根据命令类型处理
+    // Handle by command type
     switch (command) {
         case 'new':
-            // 发送命令到前端执行
+            // Send the command to the frontend to execute
             sillyTavernClient.send(JSON.stringify({
                 type: 'execute_command',
                 command: 'new',
                 chatId: chatId
             }));
-            return; // 前端会发送响应，所以这里直接返回
+            return; // The frontend will send the response, so return directly here
         case 'listchars':
-            // 发送命令到前端执行
+            // Send the command to the frontend to execute
             sillyTavernClient.send(JSON.stringify({
                 type: 'execute_command',
                 command: 'listchars',
@@ -453,9 +456,9 @@ async function handleTelegramCommand(command, args, chatId) {
             return;
         case 'switchchar':
             if (args.length === 0) {
-                replyText = '请提供角色名称或序号。用法: /switchchar <角色名称> 或 /switchchar_数字';
+                replyText = 'Please provide a character name or number. Usage: /switchchar <character name> or /switchchar_<number>';
             } else {
-                // 发送命令到前端执行
+                // Send the command to the frontend to execute
                 sillyTavernClient.send(JSON.stringify({
                     type: 'execute_command',
                     command: 'switchchar',
@@ -466,7 +469,7 @@ async function handleTelegramCommand(command, args, chatId) {
             }
             break;
         case 'listchats':
-            // 发送命令到前端执行
+            // Send the command to the frontend to execute
             sillyTavernClient.send(JSON.stringify({
                 type: 'execute_command',
                 command: 'listchats',
@@ -475,9 +478,9 @@ async function handleTelegramCommand(command, args, chatId) {
             return;
         case 'switchchat':
             if (args.length === 0) {
-                replyText = '请提供聊天记录名称。用法： /switchchat <聊天记录名称>';
+                replyText = 'Please provide a chat record name. Usage: /switchchat <chat record name>';
             } else {
-                // 发送命令到前端执行
+                // Send the command to the frontend to execute
                 sillyTavernClient.send(JSON.stringify({
                     type: 'execute_command',
                     command: 'switchchat',
@@ -488,13 +491,13 @@ async function handleTelegramCommand(command, args, chatId) {
             }
             break;
         default:
-            // 处理特殊格式的命令，如 switchchar_1, switchchat_2 等
+            // Handle special command formats, such as switchchar_1, switchchat_2, etc.
             const charMatch = command.match(/^switchchar_(\d+)$/);
             if (charMatch) {
-                // 发送命令到前端执行
+                // Send the command to the frontend to execute
                 sillyTavernClient.send(JSON.stringify({
                     type: 'execute_command',
-                    command: command, // 保持原始命令格式
+                    command: command, // Keep the original command format
                     chatId: chatId
                 }));
                 return;
@@ -502,39 +505,39 @@ async function handleTelegramCommand(command, args, chatId) {
 
             const chatMatch = command.match(/^switchchat_(\d+)$/);
             if (chatMatch) {
-                // 发送命令到前端执行
+                // Send the command to the frontend to execute
                 sillyTavernClient.send(JSON.stringify({
                     type: 'execute_command',
-                    command: command, // 保持原始命令格式
+                    command: command, // Keep the original command format
                     chatId: chatId
                 }));
                 return;
             }
     }
 
-    // 发送回复
-    bot.sendMessage(chatId, replyText).catch(err => {
-        logWithTimestamp('error', `发送命令回复失败: ${err.message}`);
+    // Send the reply
+    bot.api.sendMessage({ chat_id: chatId, text: replyText }).catch(err => {
+        logWithTimestamp('error', `Failed to send command reply: ${err.message}`);
     });
 }
 
-// --- WebSocket服务器逻辑 ---
+// --- WebSocket server logic ---
 wss.on('connection', ws => {
-    logWithTimestamp('log', 'SillyTavern扩展已连接！');
+    logWithTimestamp('log', 'SillyTavern extension connected!');
     sillyTavernClient = ws;
 
-    ws.on('message', async (message) => { // 将整个回调设为async
-        let data; // 在 try 块外部声明 data
+    ws.on('message', async (message) => { // Make the whole callback async
+        let data; // Declare data outside the try block
         try {
             data = JSON.parse(message);
 
-            // --- 处理流式文本块 ---
+            // --- Handle streaming text chunks ---
             if (data.type === 'stream_chunk' && data.chatId) {
                 let session = ongoingStreams.get(data.chatId);
 
-                // 1. 如果会话不存在，立即同步创建一个占位会话，创建会话和messagePromise
+                // 1. If the session does not exist, immediately create a placeholder session in sync; create the session and messagePromise
                 if (!session) {
-                    // 使用let声明，以便在Promise内部访问
+                    // Use let so it can be accessed inside the Promise
                     let resolveMessagePromise;
                     const messagePromise = new Promise(resolve => {
                         resolveMessagePromise = resolve;
@@ -544,42 +547,42 @@ wss.on('connection', ws => {
                         messagePromise: messagePromise,
                         lastText: data.text,
                         timer: null,
-                        isEditing: false, // 新增状态锁
+                        isEditing: false, // New state lock
                     };
                     ongoingStreams.set(data.chatId, session);
 
-                    // 异步发送第一条消息并更新 session
-                    bot.sendMessage(data.chatId, '正在思考...')
+                    // Asynchronously send the first message and update the session
+                    bot.api.sendMessage({ chat_id: data.chatId, text: 'Thinking...' })
                         .then(sentMessage => {
-                            // 当消息发送成功时，解析Promise并传入messageId
+                            // When the message is sent successfully, resolve the Promise with the messageId
                             resolveMessagePromise(sentMessage.message_id);
                         }).catch(err => {
-                            logWithTimestamp('error', '发送初始Telegram消息失败:', err);
-                            ongoingStreams.delete(data.chatId); // 出错时清理
+                            logWithTimestamp('error', 'Failed to send initial Telegram message:', err);
+                            ongoingStreams.delete(data.chatId); // Clean up on error
                         });
                 } else {
-                    // 2. 如果会话存在，只更新最新文本
+                    // 2. If the session exists, only update the latest text
                     session.lastText = data.text;
                 }
 
-                // 3. 尝试触发一次编辑（节流保护）
-                // 确保 messageId 已经获取到，并且当前没有正在进行的编辑或定时器
-                // 使用 await messagePromise 来确保messageId可用
+                // 3. Try to trigger one edit (throttling protection)
+                // Make sure messageId has been obtained and there is no ongoing edit or timer
+                // Use await on messagePromise to make sure messageId is available
                 const messageId = await session.messagePromise;
 
                 if (messageId && !session.isEditing && !session.timer) {
-                    session.timer = setTimeout(async () => { // 定时器回调也设为async
+                    session.timer = setTimeout(async () => { // The timer callback is also made async
                         const currentSession = ongoingStreams.get(data.chatId);
                         if (currentSession) {
                             const currentMessageId = await currentSession.messagePromise;
                             if (currentMessageId) {
                                 currentSession.isEditing = true;
-                                bot.editMessageText(currentSession.lastText + ' ...', {
+                                bot.api.editMessageText({ text: currentSession.lastText + ' ...', ...{
                                     chat_id: data.chatId,
                                     message_id: currentMessageId,
-                                }).catch(err => {
+                                } }).catch(err => {
                                     if (!err.message.includes('message is not modified'))
-                                        logWithTimestamp('error', '编辑Telegram消息失败:', err.message);
+                                        logWithTimestamp('error', 'Failed to edit Telegram message:', err.message);
                                 }).finally(() => {
                                     if (ongoingStreams.has(data.chatId)) ongoingStreams.get(data.chatId).isEditing = false;
                                 });
@@ -591,99 +594,99 @@ wss.on('connection', ws => {
                 return;
             }
 
-            // --- 处理流式结束信号 ---
+            // --- Handle stream-end signal ---
             if (data.type === 'stream_end' && data.chatId) {
                 const session = ongoingStreams.get(data.chatId);
-                // 只有当存在会话时才处理，这表明确实是流式传输
+                // Only handle when a session exists, which confirms streaming is really happening
                 if (session) {
                     if (session.timer) {
                         clearTimeout(session.timer);
                     }
-                    logWithTimestamp('log', `收到流式结束信号，等待最终渲染文本更新...`);
-                    // 注意：我们不在这里清理会话，而是等待final_message_update
+                    logWithTimestamp('log', `Received stream-end signal, waiting for final rendered text update...`);
+                    // Note: we do not clean up the session here; we wait for final_message_update
                 }
-                // 如果不存在会话但收到stream_end，这是一个异常情况
-                // 可能是由于某些原因会话被提前清理了
+                // If no session exists but a stream_end is received, this is an anomaly
+                // The session may have been cleaned up early for some reason
                 else {
-                    logWithTimestamp('warn', `收到流式结束信号，但找不到对应的会话 ChatID ${data.chatId}`);
-                    // 为安全起见，我们仍然发送消息，但这种情况不应该发生
-                    await bot.sendMessage(data.chatId, data.text || "消息生成完成").catch(err => {
-                        logWithTimestamp('error', '发送流式结束消息失败:', err.message);
+                    logWithTimestamp('warn', `Received stream-end signal but no matching session for ChatID ${data.chatId}`);
+                    // For safety we still send the message, but this should not happen
+                    await bot.api.sendMessage({ chat_id: data.chatId, text: data.text || "Message generation complete" }).catch(err => {
+                        logWithTimestamp('error', 'Failed to send stream-end message:', err.message);
                     });
                 }
                 return;
             }
 
-            // --- 处理最终渲染后的消息更新 ---
+            // --- Handle final rendered message update ---
             if (data.type === 'final_message_update' && data.chatId) {
                 const session = ongoingStreams.get(data.chatId);
 
-                // 如果会话存在，说明是流式传输的最终更新
+                // If a session exists, this is the final update of the streaming
                 if (session) {
-                    // 使用 await messagePromise
+                    // Use await on messagePromise
                     const messageId = await session.messagePromise;
                     if (messageId) {
-                        logWithTimestamp('log', `收到流式最终渲染文本，更新消息 ${messageId}`);
-                        await bot.editMessageText(data.text, {
+                        logWithTimestamp('log', `Received the final rendered streaming text; updating message ${messageId}`);
+                        await bot.api.editMessageText({ text: data.text, ...{
                             chat_id: data.chatId,
                             message_id: messageId,
-                            // 可选：在这里指定 parse_mode: 'MarkdownV2' 或 'HTML'
+                            // Optional: specify parse_mode here: 'MarkdownV2' or 'HTML'
                             // parse_mode: 'HTML',
-                        }).catch(err => {
+                        } }).catch(err => {
                             if (!err.message.includes('message is not modified'))
-                                logWithTimestamp('error', '编辑最终格式化Telegram消息失败:', err.message);
+                                logWithTimestamp('error', 'Failed to edit the final formatted Telegram message:', err.message);
                         });
-                        logWithTimestamp('log', `ChatID ${data.chatId} 的流式传输准最终更新已发送。`);
+                        logWithTimestamp('log', `The near-final streaming update for ChatID ${data.chatId} has been sent.`);
                     } else {
-                        logWithTimestamp('warn', `收到final_message_update，但流式会话的messageId未能获取。`);
+                        logWithTimestamp('warn', `Received final_message_update but the stream session's messageId could not be obtained.`);
                     }
-                    // 清理流式会话
+                    // Clean up the streaming session
                     ongoingStreams.delete(data.chatId);
-                    logWithTimestamp('log', `ChatID ${data.chatId} 的流式会话已完成并清理。`);
+                    logWithTimestamp('log', `The streaming session for ChatID ${data.chatId} is done and cleaned up.`);
                 }
-                // 如果会话不存在，说明这是一个完整的非流式回复
-                // 注意：这种情况不应该发生，因为我们已经在客户端修复了这个问题
-                // 但为了健壮性，我们仍然保留这个处理
+                // If no session exists, this is a complete non-streaming reply
+                // Note: this should not happen because we already fixed it on the client side
+                // But for robustness we keep this handling
                 else {
-                    logWithTimestamp('log', `收到非流式完整回复，直接发送新消息到 ChatID ${data.chatId}`);
-                    await bot.sendMessage(data.chatId, data.text, {
-                        // 可选：在这里指定 parse_mode
-                    }).catch(err => {
-                        logWithTimestamp('error', '发送非流式完整回复失败:', err.message);
+                    logWithTimestamp('log', `Received a complete non-streaming reply; sending a new message directly to ChatID ${data.chatId}`);
+                    await bot.api.sendMessage({ chat_id: data.chatId, text: data.text, ...{
+                        // Optional: specify parse_mode here
+                    } }).catch(err => {
+                        logWithTimestamp('error', 'Failed to send the complete non-streaming reply:', err.message);
                     });
                 }
                 return;
             }
 
-            // --- 其他消息处理逻辑 ---
+            // --- Other message handling logic ---
             if (data.type === 'error_message' && data.chatId) {
-                logWithTimestamp('error', `收到SillyTavern的错误报告，将发送至Telegram用户 ${data.chatId}: ${data.text}`);
-                bot.sendMessage(data.chatId, data.text);
+                logWithTimestamp('error', `Received an error report from SillyTavern, will send to Telegram user ${data.chatId}: ${data.text}`);
+                bot.api.sendMessage({ chat_id: data.chatId, text: data.text });
             } else if (data.type === 'ai_reply' && data.chatId) {
-                logWithTimestamp('log', `收到非流式AI回复，发送至Telegram用户 ${data.chatId}`);
-                // 确保在发送消息前清理可能存在的流式会话
+                logWithTimestamp('log', `Received a non-streaming AI reply, sending to Telegram user ${data.chatId}`);
+                // Make sure to clean up any existing streaming session before sending the message
                 if (ongoingStreams.has(data.chatId)) {
-                    logWithTimestamp('log', `清理 ChatID ${data.chatId} 的流式会话，因为收到了非流式回复`);
+                    logWithTimestamp('log', `Clean up the streaming session for ChatID ${data.chatId} because a non-streaming reply was received`);
                     ongoingStreams.delete(data.chatId);
                 }
-                // 发送非流式回复
-                await bot.sendMessage(data.chatId, data.text).catch(err => {
-                    logWithTimestamp('error', `发送非流式AI回复失败: ${err.message}`);
+                // Send the non-streaming reply
+                await bot.api.sendMessage({ chat_id: data.chatId, text: data.text }).catch(err => {
+                    logWithTimestamp('error', `Failed to send the non-streaming AI reply: ${err.message}`);
                 });
             } else if (data.type === 'typing_action' && data.chatId) {
-                logWithTimestamp('log', `显示"输入中"状态给Telegram用户 ${data.chatId}`);
-                bot.sendChatAction(data.chatId, 'typing').catch(error =>
-                    logWithTimestamp('error', '发送"输入中"状态失败:', error));
+                logWithTimestamp('log', `Show 'typing' status to Telegram user ${data.chatId}`);
+                bot.api.sendChatAction({ chat_id: data.chatId, action: 'typing' }).catch(error =>
+                    logWithTimestamp('error', 'Failed to send "typing" status:', error));
             } else if (data.type === 'command_executed') {
-                // 处理前端命令执行结果
-                logWithTimestamp('log', `命令 ${data.command} 执行完成，结果: ${data.success ? '成功' : '失败'}`);
+                // Handle the frontend command execution result
+                logWithTimestamp('log', `Command ${data.command} finished, result: ${data.success ? 'success' : 'failed'}`);
                 if (data.message) {
-                    logWithTimestamp('log', `命令执行消息: ${data.message}`);
+                    logWithTimestamp('log', `Command execution message: ${data.message}`);
                 }
             }
         } catch (error) {
-            logWithTimestamp('error', '处理SillyTavern消息时出错:', error);
-            // 确保即使在解析JSON失败时也能清理
+            logWithTimestamp('error', 'Error handling SillyTavern message:', error);
+            // Make sure to clean up even when JSON parsing fails
             if (data && data.chatId) {
                 ongoingStreams.delete(data.chatId);
             }
@@ -691,10 +694,10 @@ wss.on('connection', ws => {
     });
 
     ws.on('close', () => {
-        logWithTimestamp('log', 'SillyTavern扩展已断开连接。');
+        logWithTimestamp('log', 'SillyTavern extension disconnected.');
         if (ws.commandToExecuteOnClose) {
             const { command, chatId } = ws.commandToExecuteOnClose;
-            logWithTimestamp('log', `客户端断开连接，现在执行预定命令: ${command}`);
+            logWithTimestamp('log', `Client disconnected, now executing the queued command: ${command}`);
             if (command === 'reload') reloadServer(chatId);
             if (command === 'restart') restartServer(chatId);
             if (command === 'exit') exitServer(chatId);
@@ -704,22 +707,22 @@ wss.on('connection', ws => {
     });
 
     ws.on('error', (error) => {
-        logWithTimestamp('error', 'WebSocket发生错误:', error);
+        logWithTimestamp('error', 'WebSocket error:', error);
         if (sillyTavernClient) {
-            sillyTavernClient.commandToExecuteOnClose = null; // 清除标记，防止意外执行
+            sillyTavernClient.commandToExecuteOnClose = null; // Clear the flag to prevent accidental execution
         }
         sillyTavernClient = null;
         ongoingStreams.clear();
     });
 });
 
-// 检查是否需要发送重启完成通知
+// Check whether a restart-completion notification needs to be sent
 if (process.env.RESTART_NOTIFY_CHATID) {
     const chatId = parseInt(process.env.RESTART_NOTIFY_CHATID);
     if (!isNaN(chatId)) {
         setTimeout(() => {
-            bot.sendMessage(chatId, '服务器端组件已成功重启并准备就绪')
-                .catch(err => logWithTimestamp('error', '发送重启通知失败:', err))
+            bot.api.sendMessage({ chat_id: chatId, text: 'Server-side components restarted successfully and are ready' })
+                .catch(err => logWithTimestamp('error', 'Failed to send restart notification:', err))
                 .finally(() => {
                     delete process.env.RESTART_NOTIFY_CHATID;
                 });
@@ -727,23 +730,23 @@ if (process.env.RESTART_NOTIFY_CHATID) {
     }
 }
 
-// 监听Telegram消息
+// Listen for Telegram messages
 bot.on('message', (msg) => {
     const chatId = msg.chat.id;
     const text = msg.text;
     const userId = msg.from.id;
     const username = msg.from.username || 'N/A';
 
-    // 检查白名单是否已配置且不为空
+    // Check whether the whitelist is configured and not empty
     if (config.allowedUserIds && config.allowedUserIds.length > 0) {
-        // 如果当前用户的ID不在白名单中
+        // If the current user's ID is not in the whitelist
         if (!config.allowedUserIds.includes(userId)) {
-            logWithTimestamp('log', `拒绝了来自非白名单用户的访问：\n  - User ID: ${userId}\n  - Username: @${username}\n  - Chat ID: ${chatId}\n  - Message: "${text}"`);
-            // 向该用户发送一条拒绝消息
-            bot.sendMessage(chatId, '抱歉，您无权使用此机器人。').catch(err => {
-                logWithTimestamp('error', `向 ${chatId} 发送拒绝消息失败:`, err.message);
+            logWithTimestamp('log', `Denied access from a non-whitelisted user:\n  - User ID: ${userId}\n  - Username: @${username}\n  - Chat ID: ${chatId}\n  - Message: "${text}"`);
+            // Send a rejection message to this user
+            bot.api.sendMessage({ chat_id: chatId, text: 'Sorry, you do not have permission to use this bot.' }).catch(err => {
+                logWithTimestamp('error', `Failed to send the rejection message to ${chatId}:`, err.message);
             });
-            // 终止后续处理
+            // Terminate further processing
             return;
         }
     }
@@ -755,24 +758,24 @@ bot.on('message', (msg) => {
         const command = parts[0].toLowerCase();
         const args = parts.slice(1);
 
-        // 系统命令由服务器直接处理
+        // System commands are handled directly by the server
         if (['reload', 'restart', 'exit', 'ping'].includes(command)) {
             handleSystemCommand(command, chatId);
             return;
         }
 
-        // 其他命令也由服务器处理，但可能需要前端执行
+        // Other commands are also handled by the server, but the frontend may need to execute them
         handleTelegramCommand(command, args, chatId);
         return;
     }
 
-    // 处理普通消息
+    // Handle regular messages
     if (sillyTavernClient && sillyTavernClient.readyState === WebSocket.OPEN) {
-        logWithTimestamp('log', `从Telegram用户 ${chatId} 收到消息: "${text}"`);
+        logWithTimestamp('log', `Received message from Telegram user ${chatId}: "${text}"`);
         const payload = JSON.stringify({ type: 'user_message', chatId, text });
         sillyTavernClient.send(payload);
     } else {
-        logWithTimestamp('warn', '收到Telegram消息，但SillyTavern扩展未连接。');
-        bot.sendMessage(chatId, '抱歉，我现在无法连接到SillyTavern。请确保SillyTavern已打开并启用了Telegram扩展。');
+        logWithTimestamp('warn', 'Received a Telegram message but the SillyTavern extension is not connected.');
+        bot.api.sendMessage({ chat_id: chatId, text: 'Sorry, I cannot connect to SillyTavern right now. Please make sure SillyTavern is open and the Telegram extension is enabled.' });
     }
 });

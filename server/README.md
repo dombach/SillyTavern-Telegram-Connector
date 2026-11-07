@@ -1,78 +1,79 @@
-# Telegram Bridge 服务器
+# Telegram Bridge Server
 
-这是 SillyTavern Telegram Connector 的服务器端组件，负责在 Telegram 机器人和 SillyTavern 扩展之间建立通信桥梁。
+This is the server-side component of the SillyTavern Telegram Connector. It builds the communication bridge between the Telegram bot and the SillyTavern extension.
 
-## 功能
+## Features
 
-- 接收来自 Telegram 用户的消息并转发到 SillyTavern
-- 接收 SillyTavern 中 AI 的回复并转发回 Telegram
-- 处理特殊命令，如角色切换、聊天管理等
-- 维护 WebSocket 连接状态
+- Receives messages from Telegram users and forwards them to SillyTavern
+- Receives replies from the AI in SillyTavern and forwards them back to Telegram
+- Handles special commands, such as character switching and chat management
+- Maintains the WebSocket connection status
 
-## 安装
+## Installation
 
-### 前提条件
+### Prerequisites
 
-- Node.js 14.0 或更高版本
-- 已创建的 Telegram 机器人和 Bot Token
+- Node.js 14.0 or higher
+- A Telegram bot and Bot Token that you have created
 
-### 安装步骤
+### Installation steps
 
-1. 安装依赖：
+1. Install dependencies:
    ```bash
    npm install node-telegram-bot-api ws
    ```
 
-2. 配置：
-   - 复制 `config.example.js` 文件为 `config.js`：
+2. Configure:
+   - Copy the `config.example.js` file to `config.js`:
    ```bash
    # Linux/macOS
    cp ../config.example.js ../config.js
-   
+
    # Windows
    copy ..\config.example.js ..\config.js
    ```
-   - 编辑 `config.js` 文件，将 `telegramToken` 替换为您的 Telegram Bot Token
-   - 如需更改默认端口 (2333)，可修改 `wssPort` 参数
+   - Edit the `config.js` file and replace `telegramToken` with your Telegram Bot Token
+   - To change the default port (2333), modify the `wssPort` parameter
 
-3. 启动服务器：
+3. Start the server:
    ```bash
    node server.js
    ```
 
-## 使用说明
+## Usage
 
-服务器启动后，会在控制台显示以下信息：
-- `Telegram Bot已启动...`
-- `WebSocket服务器正在监听端口 XXXX...`
+After the server starts, the console will show the following information:
+- `Telegram Bot started...`
+- `WebSocket server listening on port XXXX...`
 
-当 SillyTavern 扩展连接到服务器时，会显示：
-- `SillyTavern扩展已连接！`
+When the SillyTavern extension connects to the server, it will show:
+- `SillyTavern extension connected!`
 
-### 安全提示
+### Security notes
 
-- 默认配置下，服务器只接受本地连接。如需远程访问，请考虑以下安全措施：
-  - 使用 HTTPS/WSS 加密连接
-  - 实现适当的认证机制
-  - 限制 IP 访问
-  - 确保 `config.js` 文件不被公开（已在 .gitignore 中设置）
+- By default, the server only accepts local connections. If you need remote access, please consider the following security measures:
+  - Use HTTPS/WSS for encrypted connections
+  - Implement appropriate authentication mechanisms
+  - Restrict IP access
+  - Make sure the `config.js` file is not publicly exposed (already set in .gitignore)
+- Do not publicly share code that contains your Bot Token
 
-- 请勿将包含 Bot Token 的代码公开分享
+> **Whitelist:** The default `allowedUserIds` is set to a closed whitelist (a placeholder ID) rather than an empty list. Set your own Telegram user ID in `config.js` before deploying. The server logs a warning if the whitelist is empty.
 
-## 故障排除
+## Troubleshooting
 
-- **无法启动服务器**：检查端口是否被占用，Node.js 是否正确安装
-- **找不到配置文件**：确保已复制 `config.example.js` 为 `config.js` 并放在正确位置
-- **Telegram Bot 不响应**：验证 Bot Token 是否正确，检查 Telegram API 连接状态
-- **WebSocket 连接失败**：确保防火墙未阻止指定端口，检查网络配置
+- **Cannot start the server**: Check whether the port is in use and whether Node.js is installed correctly
+- **Config file not found**: Make sure you copied `config.example.js` to `config.js` and placed it in the correct location
+- **Telegram bot not responding**: Verify whether the Bot Token is correct and check the Telegram API connection status
+- **WebSocket connection failed**: Make sure the firewall is not blocking the specified port and check your network configuration
 
-## 开发者信息
+## Developer information
 
-如需修改或扩展服务器功能，主要文件是 `server.js`，其中包含：
-- WebSocket 服务器设置
-- Telegram Bot 初始化和消息处理
-- 命令解析和处理逻辑
+If you want to modify or extend the server's functionality, the main file is `server.js`, which contains:
+- WebSocket server setup
+- Telegram Bot initialization and message handling
+- Command parsing and handling logic
 
-配置信息现在存储在项目根目录的 `config.js` 文件中，包括：
+Configuration information is now stored in the `config.js` file in the project root, including:
 - Telegram Bot Token
-- WebSocket 服务器端口
+- WebSocket server port

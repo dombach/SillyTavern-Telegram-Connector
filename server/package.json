@@ -1,7 +1,7 @@
 {
   "name": "st-telegram-connector-server",
   "version": "1.0.0",
-  "description": "SillyTavern Telegram Connector 的服务器端组件",
+  "description": "Server-side component of the SillyTavern Telegram Connector",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -10,7 +10,7 @@
   "author": "ZMou",
   "license": "GPL-3.0",
   "dependencies": {
-    "node-telegram-bot-api": "^0.64.0",
+    "node-telegram-bot-api": "^2.3.0",
     "ws": "^8.14.2"
   },
   "devDependencies": {

@@ -1,78 +1,78 @@
-# 贡献指南
+# Contributing Guide
 
-感谢您考虑为 SillyTavern Telegram Connector 项目做出贡献！以下是一些指导方针，帮助您参与项目开发。
+Thank you for considering contributing to the SillyTavern Telegram Connector project! Below are some guidelines to help you get involved in the project's development.
 
-## 如何贡献
+## How to Contribute
 
-### 报告问题
+### Reporting issues
 
-如果您发现了 bug 或有功能建议，请通过 GitHub Issues 提交：
+If you find a bug or have a feature suggestion, please submit it via GitHub Issues:
 
-1. 在提交前，请先搜索现有的 Issues，避免重复
-2. 使用清晰的标题描述问题
-3. 详细描述问题或建议，尽可能提供：
-   - 复现步骤
-   - 预期行为
-   - 实际行为
-   - 错误信息和日志
-   - 系统环境信息
+1. Before submitting, search existing Issues first to avoid duplicates
+2. Use a clear title to describe the issue
+3. Describe the issue or suggestion in detail, providing as much as possible:
+   - Reproduction steps
+   - Expected behavior
+   - Actual behavior
+   - Error messages and logs
+   - System/environment information
 
-### 提交代码
+### Submitting code
 
-1. Fork 本仓库
-2. 创建您的特性分支：`git checkout -b feature/amazing-feature`
-3. 提交您的更改：`git commit -m '添加某某功能'`
-4. 推送到分支：`git push origin feature/amazing-feature`
-5. 提交 Pull Request
+1. Fork this repository
+2. Create your feature branch: `git checkout -b feature/amazing-feature`
+3. Commit your changes: `git commit -m 'Add some feature'`
+4. Push to the branch: `git push origin feature/amazing-feature`
+5. Submit a Pull Request
 
-### Pull Request 指南
+### Pull Request guidelines
 
-- 确保代码符合项目的编码风格
-- 更新文档以反映您的更改
-- 保持 PR 专注于单一功能或修复
-- 在 PR 描述中清晰说明您的更改内容和目的
+- Make sure the code follows the project's coding style
+- Update documentation to reflect your changes
+- Keep the PR focused on a single feature or fix
+- Clearly explain in the PR description what your changes are and their purpose
 
-## 开发设置
+## Development Setup
 
-### 前提条件
+### Prerequisites
 
-- Node.js 14.0 或更高版本
-- 已安装的 SillyTavern 实例
+- Node.js 14.0 or higher
+- A running SillyTavern instance
 
-### 本地开发
+### Local development
 
-1. 克隆仓库：
+1. Clone the repository:
    ```bash
    git clone https://github.com/qiqi20020612/SillyTavern-Telegram-Connector.git
    cd SillyTavern-Telegram-Connector
    ```
 
-2. 设置服务器：
+2. Set up the server:
    ```bash
    cd server
    npm install
    ```
 
-3. 创建 Telegram Bot：
-   - 使用 [@BotFather](https://t.me/BotFather) 创建一个新的 Telegram Bot
-   - 获取 Bot Token
-   - 在 `server.js` 中替换 TOKEN 变量
+3. Create a Telegram Bot:
+   - Create a new Telegram Bot using [@BotFather](https://t.me/BotFather)
+   - Get the Bot Token
+   - Replace the TOKEN variable in `server.js`
 
-4. 启动服务器：
+4. Start the server:
    ```bash
    npm run dev
    ```
 
-5. 将扩展安装到 SillyTavern：
-   - 在 SillyTavern 中，使用本地文件路径安装扩展
-   - 或者使用 URL 安装：`http://localhost:你的端口/SillyTavern-Telegram-Connector`
+5. Install the extension into SillyTavern:
+   - In SillyTavern, install the extension using a local file path
+   - Or install via URL: `http://localhost:your-port/SillyTavern-Telegram-Connector`
 
-## 代码风格
+## Coding Style
 
-- 使用有意义的变量和函数名称
-- 添加适当的注释
-- 遵循 JavaScript 标准实践
+- Use meaningful variable and function names
+- Add appropriate comments
+- Follow JavaScript best practices
 
-## 许可证
+## License
 
-通过提交 Pull Request，您同意您的贡献将在 [GPL-3.0 许可证](LICENSE) 下发布。 
+By submitting a Pull Request, you agree that your contribution will be released under the [GPL-3.0 license](LICENSE).
