@@ -1,27 +1,24 @@
 // index.js
 
-// Only destructure the properties that actually exist in the object returned by getContext()
-const {
-    extensionSettings,
-    deleteLastMessage, // Import the function that deletes the last message
-    saveSettingsDebounced, // Import the function that saves settings
-} = SillyTavern.getContext();
-
-// The getContext function is part of the global SillyTavern object; we do not need to import it from anywhere
-// Just call SillyTavern.getContext() directly when needed
-
-// Import all needed public API functions from script.js
-import {
-    eventSource,
-    event_types,
-    getPastCharacterChats,
-    sendMessageAsUser,
-    doNewChat,
-    selectCharacterById,
-    openCharacterChat,
-    Generate,
-    setExternalAbortController,
-} from "../../../script.js";
+// Version-independent access to SillyTavern's public API.
+// SillyTavern exposes functions in different places depending on the version:
+//   - on the context object from SillyTavern.getContext()
+//   - on SillyTavern.api
+//   - as window globals
+// We probe all three sources so the extension works across versions.
+function api(name) {
+    try {
+        if (typeof SillyTavern === 'undefined') return undefined;
+        const ctx = SillyTavern.getContext();
+        if (ctx && ctx[name]) return ctx[name];
+        if (ctx && ctx.api && ctx.api[name]) return ctx.api[name];
+        if (SillyTavern[name]) return SillyTavern[name];
+        if (typeof window !== 'undefined' && window[name]) return window[name];
+    } catch (e) {
+        // ignore and fall through
+    }
+    return undefined;
+}
 
 const MODULE_NAME = 'SillyTavern-Telegram-Connector';
 const DEFAULT_SETTINGS = {
@@ -37,10 +34,11 @@ let isStreamingMode = false;
 
 // --- Utility functions ---
 function getSettings() {
-    if (!extensionSettings[MODULE_NAME]) {
-        extensionSettings[MODULE_NAME] = { ...DEFAULT_SETTINGS };
+    const ctx = SillyTavern.getContext();
+    if (!ctx.extensionSettings[MODULE_NAME]) {
+        ctx.extensionSettings[MODULE_NAME] = { ...DEFAULT_SETTINGS };
     }
-    return extensionSettings[MODULE_NAME];
+    return ctx.extensionSettings[MODULE_NAME];
 }
 
 function updateStatus(message, color) {
@@ -100,7 +98,7 @@ function connect() {
                 }
 
                 // 2. Add the user message to SillyTavern
-                await sendMessageAsUser(data.text);
+                await api('sendMessageAsUser')(data.text);
 
                 // 3. Set up the streaming callback
                 const streamCallback = (cumulativeText) => {
@@ -115,11 +113,13 @@ function connect() {
                         }));
                     }
                 };
-                eventSource.on(event_types.STREAM_TOKEN_RECEIVED, streamCallback);
+                const es = api('eventSource');
+                const et = api('event_types');
+                es.on(et.STREAM_TOKEN_RECEIVED, streamCallback);
 
                 // 4. Define a cleanup function
                 const cleanup = () => {
-                    eventSource.removeListener(event_types.STREAM_TOKEN_RECEIVED, streamCallback);
+                    es.removeListener(et.STREAM_TOKEN_RECEIVED, streamCallback);
                     if (ws && ws.readyState === WebSocket.OPEN && isStreamingMode) {
                         // Only send stream_end when there is no error and streaming mode is really active
                         if (!data.error) {
@@ -131,20 +131,20 @@ function connect() {
 
                 // 5. Listen for the generation-ended event to make sure cleanup runs whether it succeeds or not
                 // Note: We now use once to make sure this listener runs only once and does not interfere with the subsequent global listener
-                eventSource.once(event_types.GENERATION_ENDED, cleanup);
+                es.once(et.GENERATION_ENDED, cleanup);
                 // Add handling for manually stopping generation
-                eventSource.once(event_types.GENERATION_STOPPED, cleanup);
+                es.once(et.GENERATION_STOPPED, cleanup);
 
                 // 6. Trigger SillyTavern's generation flow, wrapped in try...catch
                 try {
                     const abortController = new AbortController();
-                    setExternalAbortController(abortController);
-                    await Generate('normal', { signal: abortController.signal });
+                    api('setExternalAbortController')(abortController);
+                    await api('Generate')('normal', { signal: abortController.signal });
                 } catch (error) {
                     console.error("[Telegram Bridge] Generate() error:", error);
 
                     // a. Delete the user message that caused the error from the SillyTavern chat history
-                    await deleteLastMessage();
+                    await api('deleteLastMessage')();
                     console.log('[Telegram Bridge] Deleted the user message that caused the error.');
 
                     // b. Prepare and send the error message to the server
@@ -193,7 +193,7 @@ function connect() {
                 try {
                     switch (data.command) {
                         case 'new':
-                            await doNewChat({ deleteCurrentChat: false });
+                            await api('doNewChat')({ deleteCurrentChat: false });
                             replyText = 'A new chat has started.';
                             commandSuccess = true;
                             break;
@@ -222,7 +222,7 @@ function connect() {
 
                             if (targetChar) {
                                 const charIndex = characters.indexOf(targetChar);
-                                await selectCharacterById(charIndex);
+                                await api('selectCharacterById')(charIndex);
                                 replyText = `Successfully switched to character "${targetName}".`;
                                 commandSuccess = true;
                             } else {
@@ -235,7 +235,7 @@ function connect() {
                                 replyText = 'Please select a character first.';
                                 break;
                             }
-                            const chatFiles = await getPastCharacterChats(context.characterId);
+                            const chatFiles = await api('getPastCharacterChats')(context.characterId);
                             if (chatFiles.length > 0) {
                                 replyText = 'Chat records for the current character:\n\n';
                                 chatFiles.forEach((chat, index) => {
@@ -256,7 +256,7 @@ function connect() {
                             }
                             const targetChatFile = `${data.args.join(' ')}`;
                             try {
-                                await openCharacterChat(targetChatFile);
+                                await api('openCharacterChat')(targetChatFile);
                                 replyText = `Loaded chat record: ${targetChatFile}`;
                                 commandSuccess = true;
                             } catch (err) {
@@ -274,7 +274,7 @@ function connect() {
                                 if (index >= 0 && index < characters.length) {
                                     const targetChar = characters[index];
                                     const charIndex = context.characters.indexOf(targetChar);
-                                    await selectCharacterById(charIndex);
+                                    await api('selectCharacterById')(charIndex);
                                     replyText = `Switched to character "${targetChar.name}".`;
                                     commandSuccess = true;
                                 } else {
@@ -290,13 +290,13 @@ function connect() {
                                     break;
                                 }
                                 const index = parseInt(chatMatch[1]) - 1;
-                                const chatFiles = await getPastCharacterChats(context.characterId);
+                                const chatFiles = await api('getPastCharacterChats')(context.characterId);
 
                                 if (index >= 0 && index < chatFiles.length) {
                                     const targetChat = chatFiles[index];
                                     const chatName = targetChat.file_name.replace('.jsonl', '');
                                     try {
-                                        await openCharacterChat(chatName);
+                                        await api('openCharacterChat')(chatName);
                                         replyText = `Loaded chat record: ${chatName}`;
                                         commandSuccess = true;
                                     } catch (err) {
@@ -376,7 +376,7 @@ jQuery(async () => {
             const settings = getSettings();
             settings.bridgeUrl = $('#telegram_bridge_url').val();
             // Make sure to call saveSettingsDebounced to save the settings
-            saveSettingsDebounced();
+            api('saveSettingsDebounced')();
         });
 
         $('#telegram_auto_connect').on('change', function () {
@@ -384,11 +384,19 @@ jQuery(async () => {
             settings.autoConnect = $(this).prop('checked');
             // Make sure to call saveSettingsDebounced to save the settings
             console.log(`[Telegram Bridge] Auto-connect setting changed to: ${settings.autoConnect}`);
-            saveSettingsDebounced();
+            api('saveSettingsDebounced')();
         });
 
         $('#telegram_connect_button').on('click', connect);
         $('#telegram_disconnect_button').on('click', disconnect);
+
+        // Register global generation listeners (resolved via api() for version-independence)
+        const es = api('eventSource');
+        const et = api('event_types');
+        if (es && et) {
+            es.on(et.GENERATION_ENDED, handleFinalMessage);
+            es.on(et.GENERATION_STOPPED, handleFinalMessage);
+        }
 
         if (settings.autoConnect) {
             console.log('[Telegram Bridge] Auto-connect is enabled, connecting...');
@@ -463,9 +471,3 @@ function handleFinalMessage(lastMessageIdInChatArray) {
         }
     }, 100);
 }
-
-// Global event listener for the final message update
-eventSource.on(event_types.GENERATION_ENDED, handleFinalMessage);
-
-// Add handling for manually stopping generation
-eventSource.on(event_types.GENERATION_STOPPED, handleFinalMessage);
