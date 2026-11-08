@@ -34,6 +34,8 @@ a76cd18 fix: version-independent API access (remove top-level imports, use api r
 bdf1779 fix: load extension correctly (import path + multiline string literals)
 aecc3ed upgrade: node-telegram-bot-api to v2.3.0 (breaking API migration)
 aa65c92 security: close whitelist default + startup warning
+5550944 docs: mark Telegram-inbound fix resolved (commit a65befe)
+82391be fix: adapt extension to SillyTavern 1.19 API (getContext + textarea)
 ```
 
 1. **Fork/Klon/Audit:** Kein Schadcode; `child_process.spawn` nur für `/restart`.
@@ -49,9 +51,22 @@ aa65c92 security: close whitelist default + startup warning
 
 Ursache: `node-telegram-bot-api@2.3.0` übergibt am `bot.on('message')` einen roten Update-Wrapper `{update:{message:{...}}, api, state}`; dort ist `msg.text` = `undefined`. Der Handler brach bei `if (!text) return;` ab -> keine Ausgabe/Weiterleitung. Text steht in `msg.update.message.text`.
 
-Fix: Commit `a65befe`. Handler destruktu
-    `const inner = (msg && msg.update && msg.update.message) || msg;` und liest den Text aus `msg.update.message.text` aus. Auf dem LXC verifiziert: Nachricht „fixtest" wurde korrekt gelesen und lief bis zum SillyTavern-Zweig.
+Fix: Commit `a65befe`. Handler liest den Text nicht aus `msg.text`, sondern destruktu
+    `const inner = (msg && msg.update && msg.update.message) || msg;` und liest aus `msg.update.message.text` = (msg && msg.update && msg.update.message) || msg;` und liest den Text aus `msg.update.message.text` aus. Auf dem LXC verifiziert: Nachricht „fixtest" wurde korrekt gelesen und lief bis zum SillyTavern-Zweig.
 Auf der VM nur `server/server.js` austauschen und Server neu starten.
+
+### ST 1.19.0: Inbound-Flug repariert (2026-11-08, Iris) — Commit `82391be`
+Nach Fix `a65befe` lief die Bridge, aber ST 1.19.0 warf `TypeError: api(...) is not a function` (index.js:101).
+Ursache: In 1.19.0 ist `globalThis.SillyTavern = { libs, getContext }` und `getContext()` exponiert viele
+Funktionen unter neuem Namen/nicht mehr: `sendMessageAsUser` ist GANZ weg, `Generate` heißt nur `generate`.
+Fix in `index.js`:
+- `api()` umgeschrieben: löst über `getContext()`, case-insensitiv (Generate->generate), `typeof function`-Guard.
+- `sendMessageAsUser`-Aufruf ersetzt durch Schreiben in `$('#send_textarea')` + input-Event; `generate()` liest den Text
+  selbst und fugt ihn intern ein (script.js:4448-4454).
+- `setExternalAbortController` defensive geguardet (nicht mehr erreichbar); Lauf uber das ubergebene `signal`.
+Slashcommands (/new, /listchats, /switchchat) brauchen `doNewChat`/`getPastCharacterChats`, die in 1.19 nicht im
+Context liegen -> schlagen weiterhin uber den bestehenden command-catch fehl (bewusst nicht im Scope).
+Auf der VM `index.js` austauschen (siehe unten) und Server neu starten, dann Frage testen.
 
 ## 4. Wichtige Pitfalls & Regeln (für neue Session unbedingt beachten)
 
