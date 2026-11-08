@@ -156,19 +156,15 @@ function connect() {
                 // Add handling for manually stopping generation
                 es.once(et.GENERATION_STOPPED, cleanup);
 
-                // 6. Trigger SillyTavern's generation flow, wrapped in try...catch
+                // 6. Trigger SillyTavern's generation flow by sending the textarea
+                // content, exactly like pressing Enter / clicking Send. This runs
+                // ST's normal send path (sendTextareaMessage -> Generate), which reads
+                // the textarea and inserts the user message internally. Simply writing
+                // to the textarea is not enough -- the send itself must be triggered.
                 try {
-                    const abortController = new AbortController();
-                    // ST 1.19+: setExternalAbortController is no longer exposed via
-                    // the extension API. Generation still works through the signal
-                    // passed below, so this is best-effort only.
-                    try {
-                        const setAbort = api('setExternalAbortController');
-                        if (typeof setAbort === 'function') setAbort(abortController);
-                    } catch (e) { /* ignore */ }
-                    await api('generate')('normal', { signal: abortController.signal });
+                    $('#send_but').trigger('click');
                 } catch (error) {
-                    console.error("[Telegram Bridge] Generate() error:", error);
+                    console.error("[Telegram Bridge] Send failed:", error);
 
                     // a. Delete the user message that caused the error from the SillyTavern chat history
                     await api('deleteLastMessage')();
