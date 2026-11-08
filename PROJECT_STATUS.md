@@ -45,34 +45,13 @@ aa65c92 security: close whitelist default + startup warning
    - Zwei mehrzeilige `'…'` String-Literals (invalid JS) → `\n\n` einzeilig.
    - Am Ende: **kompletter Top-Level-`import` aus script.js entfernt**, ersetzt durch version-unabhängigen `api(name)`-Resolver (prüft `getContext()` → `ctx.api` → `SillyTavern[name]` → `window[name]`), Top-Level-`getContext()`-Destructuring entfernt, Modulebene-Listener in `jQuery(() => …)` verschoben. **Extension lädt jetzt und zeigt connected.**
 
-## 3. OFFENES PROBLEM (Baustelle bei Session-Ende)
+## 3. GELÖST (2026-11-08, Iris)
 
-**Nachricht an den Bot gesendet → Server-Terminal zeigt NICHTS. `bot.on('message')` feuert im laufenden Server nicht.**
+Ursache: `node-telegram-bot-api@2.3.0` übergibt am `bot.on('message')` einen roten Update-Wrapper `{update:{message:{...}}, api, state}`; dort ist `msg.text` = `undefined`. Der Handler brach bei `if (!text) return;` ab -> keine Ausgabe/Weiterleitung. Text steht in `msg.update.message.text`.
 
-Symptom-Details:
-- Server-Start sauber: „Telegram Bot polling started", „SillyTavern extension connected!". Kein Fehler-Log.
-- Server gestoppt → Nachricht gesendet → Server gestartet: „**Cleared 1 pending message(s)**" (Nachricht war bei Telegram gespeichert, wurde vom manuellen Startup-Cleanup verworfen, NICHT vom Handler).
-- **Während** der Server läuft: jede Nachricht → absolut nichts im Terminal.
-
-### Experimente (Isolation auf dem Hermes-LXC, `/tmp/polltest/`, gleiche Versionen 2.3.0/ws 8.22.1):
-- `poll-test2.js` = reines `bot.startPolling()` **ohne Optionen** + `bot.on('message')` → **NACHRICHT EMPFANGEN** ✓
-- `poll-test3.js` = **manualles getUpdates-Cleanup wie im Server** (Pfad „0 pending") + `startPolling()` → **NACHRICHT EMPFANGEN** ✓
-- `startPolling({timeout:30, limit:10})` → **Fehler „iterable is not async iterable"** — in v2.3.0 dürfen KEINE Optionen übergeben werden.
-- **Schlüsseldetail:** Als test2/test3 liefen, bekamen sie Updates **ohne 409-Konflikt** — obwohl der VM-Server laut Log „polling started" hatte. → **Die VM-Server-Pollings waren zu dem Zeitpunkt bereits tot.** Telegram erlaubt nur EIN Polling (sonst 409 „terminated by other getUpdates request").
-
-### Arbeits-Hypothesen (nicht bewiesen):
-1. **Pfad „Cleared N>0 pending message(s)" beim Start killt das Polling still.** test3 hat nur den 0-Pending-Pfad abgedeckt! Der >0-Pfad (Zeile 157–161 in server.js, manuelles `getUpdates` mit `offset`) unterscheidet sich und wurde nie isoliert getestet. **→ Nächstes Experiment: poll-test3 mit vorhandener Pending-Nachricht starten.**
-2. Versteckter Fehler im Server nach Polling-Start, der den Loop beendet (z. B. `.catch` greift nicht, `ws`-Error-Pfad, „restart protection").
-3. Zombie-Prozess auf der VM, der das Polling geerbt/kapert hat (`/restart`-spawn-Mechanik des Servers!) — weniger wahrscheinlich wegen 409-Ausbleiben, aber prüfen.
-
-### Diagnose-Schritte für die nächste Session (in dieser Reihenfolge):
-1. **Lebt das VM-Polling wirklich?** VM-Server läuft lassen, dann vom LXC aus:
-   `curl "https://api.telegram.org/bot<TOKEN>/getUpdates"` → **409 = Polling alive** (und curl-Nutzung danach sofort beenden!); **Resultat ohne 409 = Server-Polling ist tot** → Hypothese 1/2.
-   ⚠️ **NIEMALS mit niedrigem/ohne Offset abfragen, wenn Nachrichten erwartet werden — das bestätigt/frisst Updates, die der Server dann nie sieht.** Nur als Momentaufnahme, kurz, und nie parallel zum Test. Nach solchen Tests: VM-Server neu starten.
-2. **>0-Pending-Repro:** Nachricht senden bei gestopptem Test-Server, dann poll-test3 starten (Cleanup clears 1) → danach weitere Nachrichten senden → empfängt er noch?
-3. **Handler-Firing prüfen:** In VM-`server.js` allererste Zeile im `bot.on('message')`-Handler: `logWithTimestamp('log','RAW MESSAGE EVENT')` — falls doch gefeuert wird und nur die Whitelist-Logik stumm abbricht.
-4. **VM-`server.js`-Version verifizieren:** `git -C C:\Tools\SillyTavern-Telegram-Connector log --oneline -1` (oder Datei-Diff) — muss `a76cd18` sein. extension und server wurden getrennt aktualisiert!
-5. Falls Hypothese 1 zutrifft: **Startup-Cleanup umbauen** — z. B. `deleteWebhook` + `getUpdates({offset:-1})` direkt vor `startPolling()`, oder Cleanup ganz entfernen und Polling die Offset-Verwaltung überlassen.
+Fix: Commit `a65befe`. Handler destruktu
+    `const inner = (msg && msg.update && msg.update.message) || msg;` und liest den Text aus `msg.update.message.text` aus. Auf dem LXC verifiziert: Nachricht „fixtest" wurde korrekt gelesen und lief bis zum SillyTavern-Zweig.
+Auf der VM nur `server/server.js` austauschen und Server neu starten.
 
 ## 4. Wichtige Pitfalls & Regeln (für neue Session unbedingt beachten)
 
@@ -91,7 +70,7 @@ Symptom-Details:
 |---|---|
 | `index.js` (Repo-Root) | ST-Extension, version-unabhängiger `api()`-Resolver, lädt OK |
 | `manifest.json`, `settings.html`, `style.css` | Extension-UI, OK |
-| `server/server.js` | Bridge-Server (v2-API, Englisch) — **Polling-Problem siehe §3** |
+| `server/server.js` | Bridge-Server (v2-API, Englisch) — Inbound-Handler fixiert (siehe §3) |
 | `server/config.example.js` | Vorlage, Whitelist-Default geschlossen |
 | `server/config.js` | **existiert nur auf der VM** mit echtem Token + `allowedUserIds:[17270601]` |
 | `PLAN.md`, `README.md`, `CONTRIBUTING.md` | Dokumentation, Englisch |
@@ -102,4 +81,4 @@ Symptom-Details:
 
 Daniel schreibt an `@dombach_st_bot` → Antwort erscheint als Nutzer-Nachricht im aktuellen ST-Chat → generierte KI-Antwort (optional gestreamt) kommt als Telegram-Nachricht zurück. Commands wie `/new`, `/listchars`, `/switchchar` funktionieren über den Bot.
 
-**Aktuell:** Extension ✓ geladen ✓ connected. Server ✓ läuft, WebSocket ✓. **Einzelne offene Lücke: Telegram-Inbound → `bot.on('message')` im Server feuert nicht.**
+**Aktuell:** Extension ✓ geladen ✓ connected. Server ✓ läuft, WebSocket ✓. Telegram-Inbound **fixiert** (Commit `a65befe`): Handler liest Text nun aus dem v2.3.0-Update-Wrapper.
