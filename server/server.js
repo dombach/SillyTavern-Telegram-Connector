@@ -732,10 +732,14 @@ if (process.env.RESTART_NOTIFY_CHATID) {
 
 // Listen for Telegram messages
 bot.on('message', (msg) => {
-    const chatId = msg.chat.id;
-    const text = msg.text;
-    const userId = msg.from.id;
-    const username = msg.from.username || 'N/A';
+    // node-telegram-bot-api@2.3.0 may pass a raw update wrapper
+    // ({update:{message:{...}}, api, state}) instead of a plain message.
+    // In that case msg.text is undefined while the real data lives in msg.update.message.
+    const inner = (msg && msg.update && msg.update.message) || msg;
+    const chatId = (msg.chat && msg.chat.id) || (inner.chat && inner.chat.id);
+    const text = (msg.text != null ? msg.text : inner.text) || (inner.message && inner.message.text);
+    const userId = (msg.from && msg.from.id) || (inner.from && inner.from.id);
+    const username = (msg.from && msg.from.username) || (inner.from && inner.from.username) || 'N/A';
 
     // Check whether the whitelist is configured and not empty
     if (config.allowedUserIds && config.allowedUserIds.length > 0) {
