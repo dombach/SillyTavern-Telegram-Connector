@@ -9,11 +9,29 @@
 function api(name) {
     try {
         if (typeof SillyTavern === 'undefined') return undefined;
-        const ctx = SillyTavern.getContext();
-        if (ctx && ctx[name]) return ctx[name];
-        if (ctx && ctx.api && ctx.api[name]) return ctx.api[name];
-        if (SillyTavern[name]) return SillyTavern[name];
-        if (typeof window !== 'undefined' && window[name]) return window[name];
+
+        // SillyTavern 1.19+ exposes everything through SillyTavern.getContext().
+        const ctx = SillyTavern.getContext && SillyTavern.getContext();
+
+        // 1. Exact match on the context object
+        if (ctx && typeof ctx[name] === 'function') return ctx[name];
+
+        // 2. Case-insensitive match (handles Generate -> generate, etc.)
+        if (ctx) {
+            const lower = name.toLowerCase();
+            for (const key in ctx) {
+                if (key.toLowerCase() === lower && typeof ctx[key] === 'function') {
+                    return ctx[key];
+                }
+            }
+        }
+
+        // 3. Legacy: getContext().api[name]
+        if (ctx && ctx.api && typeof ctx.api[name] === 'function') return ctx.api[name];
+
+        // 4. Legacy globals (SillyTavern.* / window.*)
+        if (SillyTavern[name] && typeof SillyTavern[name] === 'function') return SillyTavern[name];
+        if (typeof window !== 'undefined' && window[name] && typeof window[name] === 'function') return window[name];
     } catch (e) {
         // ignore and fall through
     }
@@ -97,8 +115,11 @@ function connect() {
                     ws.send(JSON.stringify({ type: 'typing_action', chatId: data.chatId }));
                 }
 
-                // 2. Add the user message to SillyTavern
-                await api('sendMessageAsUser')(data.text);
+                // 2. Add the user message to SillyTavern.
+                // In ST 1.19+ `sendMessageAsUser` is no longer exposed via the
+                // extension API, so we write the text into the send textarea and
+                // let Generate() read it and insert it into the chat internally.
+                $('#send_textarea').val(data.text || '')[0].dispatchEvent(new Event('input', { bubbles: true }));
 
                 // 3. Set up the streaming callback
                 const streamCallback = (cumulativeText) => {
@@ -138,8 +159,14 @@ function connect() {
                 // 6. Trigger SillyTavern's generation flow, wrapped in try...catch
                 try {
                     const abortController = new AbortController();
-                    api('setExternalAbortController')(abortController);
-                    await api('Generate')('normal', { signal: abortController.signal });
+                    // ST 1.19+: setExternalAbortController is no longer exposed via
+                    // the extension API. Generation still works through the signal
+                    // passed below, so this is best-effort only.
+                    try {
+                        const setAbort = api('setExternalAbortController');
+                        if (typeof setAbort === 'function') setAbort(abortController);
+                    } catch (e) { /* ignore */ }
+                    await api('generate')('normal', { signal: abortController.signal });
                 } catch (error) {
                     console.error("[Telegram Bridge] Generate() error:", error);
 
